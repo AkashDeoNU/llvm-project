@@ -931,9 +931,11 @@ RegBankLegalizeRules::RegBankLegalizeRules(const GCNSubtarget &_ST,
       .Any({{UniP4}, {{SgprP4}, {}}})
       .Any({{UniP8}, {{SgprP8}, {}}});
 
+  addRulesForGOpcs({G_AMDGPU_WAVE_ADDRESS}).Any({{UniP5}, {{SgprP5}, {}}});
+
   bool hasSALUFloat = ST->hasSALUFloatInsts();
 
-  addRulesForGOpcs({G_FADD}, Standard)
+  addRulesForGOpcs({G_FADD, G_FMUL}, Standard)
       .Uni(S16, {{UniInVgprS16}, {Vgpr16, Vgpr16}}, !hasSALUFloat)
       .Uni(S16, {{Sgpr16}, {Sgpr16, Sgpr16}}, hasSALUFloat)
       .Div(S16, {{Vgpr16}, {Vgpr16, Vgpr16}})
