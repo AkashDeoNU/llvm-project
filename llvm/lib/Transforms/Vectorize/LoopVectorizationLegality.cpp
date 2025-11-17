@@ -935,6 +935,77 @@ bool LoopVectorizationLegality::canVectorizeInstr(Instruction &I) {
                                "reduction is used outside the loop",
                                "NonReductionValueUsedOutsideLoop", ORE, TheLoop,
                                Phi);
+
+	// TODO(akash)
+	// Variable name: get incoming values. cast it to a value 
+	// Variable location: use g3, contemplate disabling instcombine (Difficulty: easy)
+	// Give it a recommendation: make a temporary, or something else (Difficulty: easy, just incorporate the label 'a')
+
+	std::string NonReductionValueOutsideLoopWarning;
+	raw_string_ostream NonReductionValueStream(NonReductionValueOutsideLoopWarning);
+	NonReductionValueStream << "Could not vectorize due to non-reduction value used outside loop \n";
+
+	// I just need to know more about the phi node im dealing with
+	NonReductionValueStream << "Raw LLVM: " << *Phi << "\n";
+
+
+	SmallVector<std::pair<unsigned, MDNode*>> MDs;
+	std::string LocalVarName = "unknown";
+	Phi->getAllMetadata(MDs);
+	for (auto[i, MD]: MDs) {
+	  llvm::outs() << "MD Node " << i << "\n";
+	  llvm::outs() << *MD << "\n";
+	  if (DILocalVariable *LocalVar = dyn_cast<DILocalVariable>(MD)) {
+		LocalVarName = LocalVar->getName();
+	  }
+	}
+
+	NonReductionValueStream << "  variable name: " << LocalVarName << "\n";
+
+	// Get variable location
+	DebugLoc PhiDbgLoc = Phi->getDebugLoc();
+	if (PhiDbgLoc) {
+	  DILocation *Loc = PhiDbgLoc.get();
+	  NonReductionValueStream << "  variable location: " 
+							  << Loc->getFilename() << ":" << Loc->getLine() << ":" << Loc->getColumn() << "\n";
+	}
+
+	// Get loop location
+	DebugLoc LoopDbgLoc = TheLoop->getStartLoc();
+	if (LoopDbgLoc) {
+	  DILocation *Loc = LoopDbgLoc.get();
+	  NonReductionValueStream << "  loop source location: " << Loc->getFilename() << ":" << Loc->getLine() << ":" << Loc->getColumn() << "\n";
+	}
+
+	// Get user location: The user must be an instruction. All users of instructions are instructions. 
+	// Instruction *UserOutsideLoop = nullptr;
+	// for (const Use &UseOfPhi: Phi->uses()) {
+	//   if (User *UserOfPhi = UseOfPhi.getUser()) {
+	// 	if (auto* InstrUsingPhi = dyn_cast<Instruction>(UserOfPhi)) {
+	// 	  // Wrong - what if there's a conditional inside the loop body? 
+	// 	  // if (InstrUsingPhi->isUsedOutsideOfBlock(BB)) {
+	// 	  // 	UserOutsideLoop = InstrUsingPhi;
+	// 	  // }
+	// 	  if (!TheLoop->contains(InstrUsingPhi->getParent())) {
+	// 		UserOutsideLoop = InstrUsingPhi;
+	// 		break;
+	// 	  }
+	// 	}
+	//   }
+	// }
+	// if (UserOutsideLoop) {
+	//   if (const DebugLoc &DbgLoc = UserOutsideLoop->getDebugLoc()) {
+	// 	DILocation *Loc = DbgLoc.get();
+	// 	NonReductionValueStream << "  user source location: " << Loc->getFilename() << ":" << Loc->getLine() << ":" << Loc->getColumn() << "\n";		
+	//   }
+	// }
+
+	LLVMContext& Context = Phi->getContext();
+	DebugLoc DiagnosticDbgLoc = PhiDbgLoc ? PhiDbgLoc : LoopDbgLoc;
+	Context.diagnose(DiagnosticInfoGenericWithLoc(NonReductionValueOutsideLoopWarning,
+												  *Phi->getFunction(),
+												  DiagnosticLocation(DiagnosticDbgLoc),
+												  DiagnosticSeverity::DS_Warning));
     return false;
   } // end of PHI handling
 
