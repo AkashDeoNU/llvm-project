@@ -4820,6 +4820,16 @@ bool InterpretBuiltin(InterpState &S, CodePtr OpPC, const CallExpr *Call,
 
           return std::pair<unsigned, int>{VecIdx, ElemIdx};
         });
+  case X86::BI__builtin_ia32_vpdpbusd128:
+  case X86::BI__builtin_ia32_vpdpbusd256:
+  case X86::BI__builtin_ia32_vpdpbusd512:
+	// TODO(akash)
+	return true;
+  case X86::BI__builtin_ia32_vpdpbusds128:
+  case X86::BI__builtin_ia32_vpdpbusds256:
+  case X86::BI__builtin_ia32_vpdpbusds512:
+	// TODO(akash)
+ 	return true;
 
   default:
     S.FFDiag(S.Current->getLocation(OpPC),
