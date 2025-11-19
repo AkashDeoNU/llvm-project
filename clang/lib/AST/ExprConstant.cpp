@@ -13742,7 +13742,60 @@ bool VectorExprEvaluator::VisitCallExpr(const CallExpr *E) {
       return false;
     return Success(R, E);
   }
+  case X86::BI__builtin_ia32_vpdpbusd128:
+  case X86::BI__builtin_ia32_vpdpbusd256:
+  case X86::BI__builtin_ia32_vpdpbusd512: {
+	// TODO(akash)
+	APValue A, B, C;
+	if (!EvaluateAsRValue(Info, E->getArg(0), A) ||
+		!EvaluateAsRValue(Info, E->getArg(1), B) ||
+		!EvaluateAsRValue(Info, E->getArg(2), C)) {
+	  return false;
+	}
 
+	unsigned SourceLen = A.getVectorLength();
+	SmallVector<APValue, 32> ResultElements;
+
+	for (unsigned I = 0; I < SourceLen; I += 4) {
+	  APSInt DotProduct = APSInt(0);
+	  for (int J = 0; J < 4; J++) {
+		APSInt AElt = A.getVectorElt(I + J).getInt();
+		APSInt BElt = B.getVectorElt(I + J).getInt();
+		DotProduct += AElt * BElt;
+	  }
+	  APSInt Result = C.getVectorElt(I / 4).getInt() + DotProduct;
+	  ResultElements.push_back(APValue(Result));
+	}
+	
+	return Success(APValue(ResultElements.data(), ResultElements.size()), E);
+  }
+  case X86::BI__builtin_ia32_vpdpbusds128:
+  case X86::BI__builtin_ia32_vpdpbusds256:
+  case X86::BI__builtin_ia32_vpdpbusds512: {
+	// TODO(akash)
+	APValue A, B, C;
+	if (!EvaluateAsRValue(Info, E->getArg(0), A) ||
+		!EvaluateAsRValue(Info, E->getArg(1), B) ||
+		!EvaluateAsRValue(Info, E->getArg(2), C)) {
+	  return false;
+	}
+
+	unsigned SourceLen = A.getVectorLength();
+	SmallVector<APValue, 32> ResultElements;
+
+	for (unsigned I = 0; I < SourceLen; I += 4) {
+	  APSInt DotProduct = APSInt(0);
+	  for (int J = 0; J < 4; J++) {
+		APSInt AElt = A.getVectorElt(I + J).getInt();
+		APSInt BElt = B.getVectorElt(I + J).getInt();
+		DotProduct += AElt * BElt;
+	  }
+	  APSInt Result = C.getVectorElt(I / 4).getInt() + DotProduct;
+	  ResultElements.push_back(APValue(Result));
+	}
+	
+	return Success(APValue(ResultElements.data(), ResultElements.size()), E);
+  }
   }
 }
 
