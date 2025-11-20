@@ -29,6 +29,7 @@
 #include "llvm/IR/PatternMatch.h"
 #include "llvm/Transforms/Utils/SizeOpts.h"
 #include "llvm/Transforms/Vectorize/LoopVectorize.h"
+#include "llvm/IR/DebugInfo.h"
 
 using namespace llvm;
 using namespace PatternMatch;
@@ -935,7 +936,8 @@ bool LoopVectorizationLegality::canVectorizeInstr(Instruction &I) {
                                Phi);
 
 	// TODO(akash)
-	// Variable name: get incoming values. cast it to a value 
+	// Local Variable Case
+	// With the -fno-discard-value-names, the local variable name is attached to the register in LLVM IR!
 	// Variable location: use g3, contemplate disabling instcombine (Difficulty: easy)
 	// Give it a recommendation: make a temporary, or something else (Difficulty: easy, just incorporate the label 'a')
 
@@ -943,30 +945,55 @@ bool LoopVectorizationLegality::canVectorizeInstr(Instruction &I) {
 	raw_string_ostream NonReductionValueStream(NonReductionValueOutsideLoopWarning);
 	NonReductionValueStream << "Could not vectorize due to non-reduction value used outside loop \n";
 
-	// I just need to know more about the phi node im dealing with
-	NonReductionValueStream << "Raw LLVM: " << *Phi << "\n";
+	// Variable name
+	std::string LocalVarName = "";
+	DebugLoc PhiDbgLoc = Phi->getDebugLoc();
+	std::string PhiFile = "";
+	unsigned PhiLine;
 
-
-	SmallVector<std::pair<unsigned, MDNode*>> MDs;
-	std::string LocalVarName = "unknown";
-	Phi->getAllMetadata(MDs);
-	for (auto[i, MD]: MDs) {
-	  llvm::outs() << "MD Node " << i << "\n";
-	  llvm::outs() << *MD << "\n";
-	  if (DILocalVariable *LocalVar = dyn_cast<DILocalVariable>(MD)) {
-		LocalVarName = LocalVar->getName();
+	// Root of the tree
+	// llvm::outs() << "0. " << *Phi << "\n";
+	
+	TinyPtrVector<DbgVariableRecord*> DVRValues = findDVRValues(Phi);
+	// for (unsigned I = 0; I < DVRValues.size(); I++) {
+	//   llvm::outs() << "0." << I << " " << *DVRValues[I] << "\n";
+	// }
+	for (DbgVariableRecord* DVRValue: DVRValues) {
+	  DILocalVariable *LocalVar = DVRValue->getVariable();
+	  LocalVarName = LocalVar->getName();
+	  PhiFile = LocalVar->getFilename();
+	  PhiLine = LocalVar->getLine();
+	}
+	
+	
+	// Global Variable Case
+	if (LocalVarName == "") {
+	  for (const Use& Incoming: Phi->incoming_values()) {
+		if (auto *IncomingVal = dyn_cast<Instruction>(Incoming.get())) {
+		  // llvm::outs() << "1. " << *IncomingVal << "\n";
+		  if (auto *Load = dyn_cast<LoadInst>(IncomingVal)) {
+			Value *MaybeGlobalVar = Load->getPointerOperand();
+			if (auto *GlobalVar = dyn_cast<GlobalVariable>(MaybeGlobalVar)) {
+			  // llvm::outs() << "2. " << *GlobalVar << "\n";
+			  SmallVector<DIGlobalVariableExpression*> GVs;
+			  GlobalVar->getDebugInfo(GVs);
+			  if (!GVs.empty()) {
+				LocalVarName = GVs[0]->getVariable()->getName();
+				GVs[0]->getVariable()->getFilename();
+				GVs[0]->getVariable()->getLine();
+				break;
+			  }
+			}
+		  }
+		}
 	  }
 	}
 
 	NonReductionValueStream << "  variable name: " << LocalVarName << "\n";
 
-	// Get variable location
-	DebugLoc PhiDbgLoc = Phi->getDebugLoc();
-	if (PhiDbgLoc) {
-	  DILocation *Loc = PhiDbgLoc.get();
-	  NonReductionValueStream << "  variable location: " 
-							  << Loc->getFilename() << ":" << Loc->getLine() << ":" << Loc->getColumn() << "\n";
-	}
+	NonReductionValueStream << "  variable location: " << PhiFile << ":" << PhiLine << "\n";
+	
+	NonReductionValueStream << "  recommendation: " << "make a temporary copy of " << LocalVarName << "\n";
 
 	// Get loop location
 	DebugLoc LoopDbgLoc = TheLoop->getStartLoc();
@@ -974,29 +1001,6 @@ bool LoopVectorizationLegality::canVectorizeInstr(Instruction &I) {
 	  DILocation *Loc = LoopDbgLoc.get();
 	  NonReductionValueStream << "  loop source location: " << Loc->getFilename() << ":" << Loc->getLine() << ":" << Loc->getColumn() << "\n";
 	}
-
-	// Get user location: The user must be an instruction. All users of instructions are instructions. 
-	// Instruction *UserOutsideLoop = nullptr;
-	// for (const Use &UseOfPhi: Phi->uses()) {
-	//   if (User *UserOfPhi = UseOfPhi.getUser()) {
-	// 	if (auto* InstrUsingPhi = dyn_cast<Instruction>(UserOfPhi)) {
-	// 	  // Wrong - what if there's a conditional inside the loop body? 
-	// 	  // if (InstrUsingPhi->isUsedOutsideOfBlock(BB)) {
-	// 	  // 	UserOutsideLoop = InstrUsingPhi;
-	// 	  // }
-	// 	  if (!TheLoop->contains(InstrUsingPhi->getParent())) {
-	// 		UserOutsideLoop = InstrUsingPhi;
-	// 		break;
-	// 	  }
-	// 	}
-	//   }
-	// }
-	// if (UserOutsideLoop) {
-	//   if (const DebugLoc &DbgLoc = UserOutsideLoop->getDebugLoc()) {
-	// 	DILocation *Loc = DbgLoc.get();
-	// 	NonReductionValueStream << "  user source location: " << Loc->getFilename() << ":" << Loc->getLine() << ":" << Loc->getColumn() << "\n";		
-	//   }
-	// }
 
 	LLVMContext& Context = Phi->getContext();
 	DebugLoc DiagnosticDbgLoc = PhiDbgLoc ? PhiDbgLoc : LoopDbgLoc;
