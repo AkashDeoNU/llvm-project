@@ -579,13 +579,23 @@ public:
       return arith::MinSIOp::create(builder, arg0.getLoc(), arg0, arg1);
     case BinaryFn::max_unsigned:
       assert(!allComplex);
-      if (allFloatingPoint)
-        return arith::MaximumFOp::create(builder, arg0.getLoc(), arg0, arg1);
+      if (!allInteger || allBool) {
+        if (emitError) {
+          emitError() << "unsupported operation: unsigned max not on uint";
+          return nullptr;
+        }
+        llvm_unreachable("unsupported operation: unsigned max not on uint");
+      }
       return arith::MaxUIOp::create(builder, arg0.getLoc(), arg0, arg1);
     case BinaryFn::min_unsigned:
       assert(!allComplex);
-      if (allFloatingPoint)
-        return arith::MinimumFOp::create(builder, arg0.getLoc(), arg0, arg1);
+      if (!allInteger || allBool) {
+        if (emitError) {
+          emitError() << "unsupported operation: unsigned min not on uint";
+          return nullptr;
+        }
+        llvm_unreachable("unsupported operation: unsigned min not on uint");
+      }
       return arith::MinUIOp::create(builder, arg0.getLoc(), arg0, arg1);
     case BinaryFn::powf:
       assert(allFloatingPoint);
@@ -1337,8 +1347,6 @@ getGenericSpeculatabilityImpl(LinalgOp linalgOp) {
 Speculation::Speculatability GenericOp::getSpeculatability() {
   return getGenericSpeculatabilityImpl(cast<LinalgOp>(getOperation()));
 }
-
-LogicalResult GenericOp::verify() { return success(); }
 
 namespace {
 
@@ -4883,13 +4891,6 @@ void ElementwiseOp::print(OpAsmPrinter &p) {
 
   printNamedStructuredOp(p, getOperation(), getInputs(), getOutputs(),
                          elidedAttrs);
-}
-
-LogicalResult ElementwiseOp::verify() {
-  // All necessary checks are done either by
-  // - EnumAttr (e.g. unknown operation kind)
-  // - verifyStructuredOpInterface (incorrect map, sizes).
-  return success();
 }
 
 /// Implements the block region builder for the ElementwiseOp. This is called by
